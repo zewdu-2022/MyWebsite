@@ -1,0 +1,131 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Public and private user data",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "editor", "viewer"] },
+        "interests": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email"]
+    },
+    "ApiKey": {
+      "title": "API Key",
+      "description": "User generated API key for platform access",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "key": { "type": "string" },
+        "name": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "key", "name"]
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "User notification for events and updates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "title": { "type": "string" },
+        "message": { "type": "string" },
+        "type": { "type": "string", "enum": ["info", "event", "update", "alert"] },
+        "read": { "type": "boolean" },
+        "link": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "title", "message", "type", "read", "createdAt"]
+    },
+    "BlogPost": {
+      "title": "Blog Post",
+      "description": "Article or news update",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string" },
+        "excerpt": { "type": "string" },
+        "content": { "type": "string" },
+        "imagePath": { "type": "string" },
+        "authorId": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "title", "excerpt", "content", "authorId", "createdAt"]
+    },
+    "Contact": {
+      "title": "Contact Submission",
+      "description": "Inquiry from contact form",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "email": { "type": "string" },
+        "serviceName": { "type": "string" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "name", "email", "message", "createdAt"]
+    },
+    "Subscriber": {
+      "title": "Newsletter Subscriber",
+      "description": "Email for newsletter subscription",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "createdAt"]
+    },
+    "Feedback": {
+      "title": "User Feedback",
+      "description": "Feedback submitted by users",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "category": { "type": "string" },
+        "message": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "category", "message", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile document"
+    },
+    "/api_keys/{keyId}": {
+      "schema": "ApiKey",
+      "description": "Internal API keys for developers"
+    },
+    "/notifications/{notificationId}": {
+      "schema": "Notification",
+      "description": "User specific notifications"
+    },
+    "/blog_posts/{postId}": {
+      "schema": "BlogPost",
+      "description": "Global blog posts and news"
+    },
+    "/contacts/{contactId}": {
+      "schema": "Contact",
+      "description": "Contact form submissions"
+    },
+    "/subscribers/{email}": {
+      "schema": "Subscriber",
+      "description": "Newsletter subscribers"
+    },
+    "/feedback/{feedbackId}": {
+      "schema": "Feedback",
+      "description": "General user feedback"
+    }
+  }
+}

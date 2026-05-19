@@ -1,0 +1,167 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidUser(data) {
+      return data.uid is string && 
+             data.email is string &&
+             data.role in ['admin', 'editor', 'viewer'] &&
+             (data.displayName == null || (data.displayName is string && data.displayName.size() <= 200)) &&
+             (data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 500)) &&
+             (data.interests == null || (data.interests is list && data.interests.size() <= 20));
+    }
+
+    function isValidApiKey(data) {
+      return data.id is string && 
+             data.userId == request.auth.uid && 
+             data.key is string && 
+             data.key.size() <= 256 &&
+             data.name is string && 
+             data.name.size() <= 100;
+    }
+
+    function isValidNotification(data) {
+      return data.id is string &&
+             data.userId is string &&
+             data.title is string &&
+             data.title.size() <= 200 &&
+             data.message is string &&
+             data.message.size() <= 2000 &&
+             data.type in ['info', 'event', 'update', 'alert'] &&
+             data.read is bool &&
+             (data.link == null || (data.link is string && data.link.size() <= 500));
+    }
+
+    function isValidBlogPost(data) {
+      return data.id is string &&
+             data.title is string && data.title.size() <= 200 &&
+             data.excerpt is string && data.excerpt.size() <= 500 &&
+             data.content is string && data.content.size() <= 10000 &&
+             (data.imagePath == null || (data.imagePath is string && data.imagePath.size() <= 500)) &&
+             data.authorId is string;
+    }
+
+    function isValidContact(data) {
+      return data.id is string &&
+             data.name is string && data.name.size() <= 100 &&
+             data.email is string && data.email.size() <= 100 &&
+             data.message is string && data.message.size() <= 2000 &&
+             (data.serviceName == null || (data.serviceName is string && data.serviceName.size() <= 100));
+    }
+
+    function isValidSubscriber(data) {
+      return data.email is string && data.email.size() <= 100;
+    }
+
+    function isValidFeedback(data) {
+      return data.id is string &&
+             (data.userId == null || data.userId is string) &&
+             data.category is string && data.category.size() <= 100 &&
+             data.message is string && data.message.size() <= 2000;
+    }
+
+    // Users collection rules
+    match /users/{userId} {
+      allow get: if isSignedIn() && isValidId(userId);
+      allow list: if isAdmin();
+      allow create: if isOwner(userId) && isValidId(userId) && 
+                      isValidUser(incoming()) && 
+                      incoming().keys().hasAll(['uid', 'email', 'role', 'createdAt', 'updatedAt']) &&
+                      incoming().createdAt == request.time &&
+                      incoming().updatedAt == request.time;
+      allow update: if isSignedIn() && isValidId(userId) && 
+                      incoming().createdAt == existing().createdAt &&
+                      incoming().updatedAt == request.time &&
+                      (isAdmin() || 
+                       (isOwner(userId) && 
+                        incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'interests', 'updatedAt']) &&
+                        isValidUser(incoming())));
+    }
+
+    // API Keys collection rules
+    match /api_keys/{keyId} {
+      allow get: if isSignedIn() && isValidId(keyId) && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isSignedIn() && isValidId(keyId) && 
+                      isValidApiKey(incoming()) && 
+                      incoming().keys().hasAll(['id', 'userId', 'key', 'name', 'createdAt']) &&
+                      incoming().createdAt == request.time;
+      allow delete: if isSignedIn() && isValidId(keyId) && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    // Notifications collection rules
+    match /notifications/{notificationId} {
+      allow get: if isSignedIn() && isValidId(notificationId) && (existing().userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAdmin() && isValidId(notificationId) && 
+                      isValidNotification(incoming()) &&
+                      incoming().createdAt == request.time; 
+      allow update: if isSignedIn() && isValidId(notificationId) && 
+                      existing().userId == request.auth.uid && 
+                      incoming().diff(existing()).affectedKeys().hasOnly(['read']) &&
+                      isValidNotification(incoming());
+      allow delete: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+    }
+
+    // Blog Posts rules
+    match /blog_posts/{postId} {
+      allow read: if true; // Publicly readable
+      allow create: if (isAdmin() || (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'editor')) &&
+                      isValidId(postId) && 
+                      isValidBlogPost(incoming()) &&
+                      incoming().createdAt == request.time;
+      allow update: if (isAdmin() || (isSignedIn() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'editor')) &&
+                      isValidId(postId) && 
+                      isValidBlogPost(incoming()) &&
+                      incoming().createdAt == existing().createdAt;
+      allow delete: if isAdmin();
+    }
+
+    // Contact submissions rules
+    match /contacts/{contactId} {
+      allow create: if isValidId(contactId) && isValidContact(incoming()) && incoming().createdAt == request.time;
+      allow read, delete: if isAdmin();
+    }
+
+    // Subscribers rules
+    match /subscribers/{email} {
+      allow create: if isValidSubscriber(incoming()) && incoming().createdAt == request.time;
+      allow read, delete: if isAdmin();
+    }
+
+    // Feedback rules
+    match /feedback/{feedbackId} {
+      allow create: if isValidId(feedbackId) && isValidFeedback(incoming()) && incoming().createdAt == request.time;
+      allow read, delete: if isAdmin();
+    }
+  }
+}
