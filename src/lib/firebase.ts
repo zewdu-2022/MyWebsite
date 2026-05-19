@@ -251,6 +251,7 @@ export const createBlogPost = async (post: {
   title: string, 
   excerpt: string, 
   content: string, 
+  category: string,
   imagePath?: string, 
   authorId: string 
 }) => {

@@ -66,6 +66,7 @@ service cloud.firestore {
              data.title is string && data.title.size() <= 200 &&
              data.excerpt is string && data.excerpt.size() <= 500 &&
              data.content is string && data.content.size() <= 10000 &&
+             data.category is string && data.category.size() <= 100 &&
              (data.imagePath == null || (data.imagePath is string && data.imagePath.size() <= 500)) &&
              data.authorId is string;
     }

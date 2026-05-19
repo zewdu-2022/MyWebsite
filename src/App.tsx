@@ -10,10 +10,10 @@ import { Hero } from './components/Hero';
 import { 
   Menu, X, ChevronDown, Rocket, BarChart3, LineChart, 
   Search, Users, BookOpen, Globe, Newspaper, Mail, MessageCircle,
-  Linkedin, Facebook, ArrowRight, ArrowLeft, ArrowUp, ChevronLeft, ShieldCheck, 
+  Linkedin, Facebook, ArrowRight, ArrowLeft, ArrowUp, ChevronLeft, ShieldCheck, Shield,
   Leaf, Cpu, Presentation, Handshake, CreditCard, LogIn, UserPlus, Youtube,
   Link as LinkIcon, Activity, TrendingUp, Lightbulb, Workflow, Microscope, Layers, Plus,
-  Key, Terminal, Copy, Trash2, Bell, AlertTriangle, Calendar, Info, Sun, Moon
+  Key, Terminal, Copy, Trash2, Bell, AlertTriangle, Calendar, Info, Sun, Moon, Hash, Settings, User as UserIcon, Tag
 } from 'lucide-react';
 import { useDarkMode } from './lib/theme';
 import { trackEvent, trackPageView } from './lib/analytics';
@@ -26,7 +26,8 @@ import { InteractiveGlobe } from './components/InteractiveGlobe';
 import { 
   signInWithGoogle, logout, subscribeToAuthChanges, fetchUserProfile, 
   fetchAllUsers, updateUserRole, createApiKey, fetchUserApiKeys, deleteApiKey, updateUserProfile,
-  subscribeToNotifications, markNotificationAsRead, createNotification
+  subscribeToNotifications, markNotificationAsRead, createNotification,
+  fetchBlogPosts, createBlogPost
 } from './lib/firebase';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { 
@@ -63,8 +64,11 @@ interface BlogPost {
   title: string;
   excerpt: string;
   content: string;
-  image_path: string;
-  date: string;
+  category: string;
+  image_path?: string;
+  imagePath?: string; // Support both for compatibility
+  date?: string;
+  createdAt?: any;
 }
 
 interface Stats {
@@ -276,11 +280,11 @@ const BrandLogo = ({ isDark = false, text = "", onClick }: { isDark?: boolean, t
         </div>
       </div>
       <div className="flex flex-col justify-center leading-none">
-        <span className={`text-lg font-extrabold tracking-tight hidden sm:block ${isDark ? 'text-white' : 'text-blue-400'}`}>
+        <span className={`text-base sm:text-lg font-extrabold tracking-tight ${isDark ? 'text-white' : 'text-blue-400'}`}>
           {firstLine}
         </span>
         {remaining && (
-          <span className="text-sm font-medium tracking-wide hidden sm:block text-slate-400 uppercase">
+          <span className="text-[10px] sm:text-sm font-medium tracking-wide text-slate-400 uppercase">
             {remaining}
           </span>
         )}
@@ -446,7 +450,7 @@ const BlogPostCard = ({ post, index }: { post: BlogPost, index: number }) => (
     whileInView={{ opacity: 1, scale: 1 }}
     viewport={{ once: true }}
     transition={{ delay: index * 0.1 }}
-    className="bg-white rounded-3xl overflow-hidden border border-slate-100 hover:border-brand-blue/30 shadow-sm hover:shadow-xl hover:shadow-brand-blue/5 transition-all duration-500 group"
+    className="break-inside-avoid mb-8 bg-white rounded-3xl overflow-hidden border border-slate-100 hover:border-brand-blue/30 shadow-sm hover:shadow-xl hover:shadow-brand-blue/5 transition-all duration-500 group"
   >
     <div className="relative h-64 overflow-hidden">
       <img 
@@ -455,9 +459,14 @@ const BlogPostCard = ({ post, index }: { post: BlogPost, index: number }) => (
         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700"
       />
       <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-6">
-        <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-bold text-white uppercase tracking-widest">
-          {new Date(post.date).toLocaleDateString()}
-        </span>
+        <div className="flex items-center justify-between">
+          <span className="px-3 py-1 bg-white/20 backdrop-blur-md rounded-full text-[10px] font-bold text-white uppercase tracking-widest">
+            {post.category || 'Opinion'}
+          </span>
+          <span className="text-[10px] font-bold text-slate-300 uppercase tracking-widest">
+            {post.date ? new Date(post.date).toLocaleDateString() : post.createdAt ? new Date(post.createdAt.seconds * 1000).toLocaleDateString() : 'Recent'}
+          </span>
+        </div>
       </div>
     </div>
     <div className="p-8">
@@ -817,7 +826,7 @@ const ProfileView = ({ user, onUpdate, onBack }: { user: User, onUpdate: (data: 
   const [interests, setInterests] = useState<string[]>(user.interests || []);
   const [updating, setUpdating] = useState(false);
 
-  const availableInterests = ["Sustainability", "Global Economy", "Technology", "Public Policy", "Market Research", "Education"];
+  const availableInterests = ["Sustainability", "Global Economy", "Technology", "Public Policy", "Market Research", "Education", "Healthcare", "Infrastructure", "Renewable Energy"];
 
   const toggleInterest = (interest: string) => {
     if (interests.includes(interest)) {
@@ -830,10 +839,15 @@ const ProfileView = ({ user, onUpdate, onBack }: { user: User, onUpdate: (data: 
   const handleUpdate = async (e: React.FormEvent) => {
     e.preventDefault();
     setUpdating(true);
-    await updateUserProfile(user.id, { displayName: name, interests });
-    onUpdate({ name, interests });
-    setUpdating(false);
-    setIsEditing(false);
+    try {
+      await updateUserProfile(user.id, { displayName: name, interests });
+      onUpdate({ name, interests });
+      setIsEditing(false);
+    } catch (err) {
+      console.error("Failed to update profile", err);
+    } finally {
+      setUpdating(false);
+    }
   };
 
   return (
@@ -845,80 +859,129 @@ const ProfileView = ({ user, onUpdate, onBack }: { user: User, onUpdate: (data: 
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <button 
           onClick={onBack}
-          className="flex items-center gap-2 text-xs font-black text-brand-blue mb-12 uppercase tracking-widest hover:opacity-70 transition-all"
+          className="flex items-center gap-2 text-xs font-black text-brand-blue mb-12 uppercase tracking-widest hover:opacity-70 transition-all group"
         >
-          <ArrowLeft size={14} strokeWidth={3} /> Back to Home
+          <ArrowLeft size={14} strokeWidth={3} className="group-hover:-translate-x-1 transition-transform" /> Back to Dashboard
         </button>
 
-        <div className="bg-white rounded-[3rem] shadow-xl overflow-hidden border border-slate-100">
-          <div className="h-48 bg-gradient-to-r from-indigo-500 via-brand-blue to-purple-600 relative">
-             <div className="absolute -bottom-16 left-12">
-                <div className="relative group">
-                  {user.photoURL ? (
-                    <img src={user.photoURL} alt="" className="w-32 h-32 rounded-[2rem] border-8 border-white shadow-2xl overflow-hidden" />
-                  ) : (
-                    <div className="w-32 h-32 rounded-[2rem] border-8 border-white bg-slate-100 shadow-2xl flex items-center justify-center text-slate-300">
-                      <Users size={48} />
-                    </div>
-                  )}
-                </div>
-             </div>
+        <div className="bg-white rounded-[3rem] shadow-2xl overflow-hidden border border-slate-100">
+          <div className="h-64 bg-gradient-to-br from-indigo-600 via-brand-blue to-purple-700 relative">
+            <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/cubes.png')] opacity-10"></div>
+            <div className="absolute -bottom-20 left-12">
+              <div className="relative">
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt="" className="w-40 h-40 rounded-[2.5rem] border-8 border-white shadow-2xl object-cover" />
+                ) : (
+                  <div className="w-40 h-40 rounded-[2.5rem] border-8 border-white bg-slate-100 shadow-2xl flex items-center justify-center text-slate-300">
+                    <UserIcon size={64} />
+                  </div>
+                )}
+                <div className="absolute bottom-2 right-2 w-8 h-8 bg-green-500 border-4 border-white rounded-full"></div>
+              </div>
+            </div>
           </div>
 
-          <div className="pt-20 px-12 pb-12">
-            <div className="flex justify-between items-start mb-12">
-              <div>
-                <h1 className="text-4xl font-black text-slate-900">{user.name}</h1>
-                <p className="text-slate-500 font-medium flex items-center gap-2 mt-1">
-                  {user.email} • <span className={`px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-widest ${
+          <div className="pt-24 px-12 pb-12">
+            <div className="flex flex-col md:flex-row justify-between items-start gap-8 mb-16">
+              <div className="flex-grow">
+                <div className="flex items-center gap-4 mb-2">
+                  <h1 className="text-4xl font-black text-slate-900">{user.name}</h1>
+                  <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest flex items-center gap-1.5 ${
                     user.role === 'admin' ? 'bg-red-50 text-red-600' :
                     user.role === 'editor' ? 'bg-blue-50 text-blue-600' :
-                    'bg-slate-100 text-slate-400'
-                  }`}>{user.role}</span>
-                </p>
-                <div className="flex flex-wrap gap-2 mt-4">
-                  {user.interests?.map(interest => (
-                    <span key={interest} className="px-3 py-1 bg-brand-blue/10 text-brand-blue text-[10px] font-bold rounded-full uppercase tracking-widest">
-                      {interest}
-                    </span>
-                  ))}
+                    'bg-slate-100 text-slate-500'
+                  }`}>
+                    <Shield size={10} /> {user.role}
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-6 text-slate-500 font-medium text-sm">
+                  <span className="flex items-center gap-2">
+                    <Mail size={16} className="text-brand-blue/60" /> {user.email}
+                  </span>
+                  <span className="flex items-center gap-2">
+                    <Calendar size={16} className="text-brand-blue/60" /> Member since 2024
+                  </span>
+                </div>
+                
+                <div className="mt-8">
+                  <h3 className="text-xs font-black text-slate-400 uppercase tracking-[0.2em] mb-4 flex items-center gap-2">
+                    <Hash size={14} /> Professional Interests
+                  </h3>
+                  <div className="flex flex-wrap gap-2">
+                    {user.interests?.length ? user.interests.map(interest => (
+                      <span key={interest} className="px-4 py-1.5 bg-slate-50 text-slate-600 text-[10px] font-bold rounded-xl border border-slate-100 uppercase tracking-wider">
+                        {interest}
+                      </span>
+                    )) : (
+                      <p className="text-slate-400 text-sm italic">No interests specified.</p>
+                    )}
+                  </div>
                 </div>
               </div>
-              {!isEditing && (
+              
+              {!isEditing ? (
                 <button 
                   onClick={() => setIsEditing(true)}
-                  className="px-6 py-3 bg-slate-900 text-white font-bold rounded-2xl hover:scale-105 active:scale-95 transition-all shadow-lg"
+                  className="w-full md:w-auto px-8 py-4 bg-slate-900 text-white font-bold rounded-2xl hover:bg-brand-blue transition-all shadow-xl hover:shadow-brand-blue/20 flex items-center justify-center gap-2 group"
                 >
-                  Edit Profile
+                  <Settings size={18} className="group-hover:rotate-90 transition-transform duration-500" /> Edit Profile
                 </button>
-              )}
+              ) : null}
             </div>
 
             {isEditing ? (
-              <form onSubmit={handleUpdate} className="space-y-8 bg-slate-50 p-8 rounded-[2rem] border border-slate-100 shadow-inner">
-                <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Display Name</label>
-                  <input 
-                    type="text" 
-                    disabled={updating}
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-4 py-3 text-sm focus:ring-2 focus:ring-brand-blue/20 outline-none transition-all disabled:opacity-50"
-                  />
+              <motion.form 
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                onSubmit={handleUpdate} 
+                className="space-y-10 bg-slate-50 p-10 rounded-[3rem] border border-slate-100 shadow-inner"
+              >
+                <div className="grid md:grid-cols-2 gap-10">
+                  <div className="space-y-3">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Display Name</label>
+                    <div className="relative">
+                      <UserIcon className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-300" size={18} />
+                      <input 
+                        type="text" 
+                        required
+                        disabled={updating}
+                        value={name}
+                        onChange={(e) => setName(e.target.value)}
+                        className="w-full bg-white border border-slate-200 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold text-slate-800 focus:ring-4 focus:ring-brand-blue/10 outline-none transition-all disabled:opacity-50"
+                        placeholder="Your full name"
+                      />
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest ml-1">Account Email</label>
+                    <div className="relative">
+                      <Mail className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-200" size={18} />
+                      <input 
+                        type="email" 
+                        disabled
+                        value={user.email}
+                        className="w-full bg-slate-100/50 border border-slate-100 rounded-2xl pl-12 pr-4 py-4 text-sm font-bold text-slate-400 cursor-not-allowed"
+                      />
+                    </div>
+                    <p className="text-[10px] text-slate-400 font-medium ml-1">Email cannot be changed once verified.</p>
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Update your interests</label>
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-4 ml-1 flex items-center gap-2">
+                    <Tag size={12} /> Expertise & Interests
+                  </label>
                   <div className="flex flex-wrap gap-3">
                     {availableInterests.map(interest => (
                       <button
                         key={interest}
                         type="button"
                         onClick={() => toggleInterest(interest)}
-                        className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                        className={`px-5 py-2.5 rounded-2xl text-xs font-bold transition-all ${
                           interests.includes(interest) 
-                            ? 'bg-brand-blue text-white shadow-md shadow-blue-500/20' 
-                            : 'bg-white border border-slate-200 text-slate-500 hover:border-brand-blue/30'
+                            ? 'bg-brand-blue text-white shadow-xl shadow-blue-500/30 ring-4 ring-brand-blue/10' 
+                            : 'bg-white border border-slate-200 text-slate-500 hover:border-brand-blue/40'
                         }`}
                       >
                         {interest}
@@ -927,46 +990,50 @@ const ProfileView = ({ user, onUpdate, onBack }: { user: User, onUpdate: (data: 
                   </div>
                 </div>
 
-                <div className="flex items-center gap-3 pt-4 border-t border-slate-200/50">
+                <div className="flex flex-col sm:flex-row items-center gap-4 pt-8 border-t border-slate-200/50">
                   <button 
                     type="submit"
                     disabled={updating}
-                    className="flex-grow py-4 bg-brand-blue text-white font-bold rounded-xl shadow-lg shadow-blue-500/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-2"
+                    className="w-full sm:flex-grow py-5 bg-brand-blue text-white font-black rounded-2xl shadow-2xl shadow-blue-500/20 hover:scale-[1.02] active:scale-95 transition-all flex items-center justify-center gap-3"
                   >
-                    {updating ? <LoadingSpinner size={18} className="text-white" /> : 'Save Profile Updates'}
+                    {updating ? <LoadingSpinner size={20} className="text-white" /> : (
+                      <>
+                        <ShieldCheck size={20} /> Save Profile Changes
+                      </>
+                    )}
                   </button>
                   <button 
                     type="button"
                     disabled={updating}
                     onClick={() => { setIsEditing(false); setName(user.name); setInterests(user.interests || []); }}
-                    className="px-8 py-4 bg-white border border-slate-200 text-slate-600 font-bold rounded-xl hover:bg-slate-100 transition-all disabled:opacity-50"
+                    className="w-full sm:w-auto px-10 py-5 bg-white border border-slate-200 text-slate-600 font-bold rounded-2xl hover:bg-slate-50 transition-all disabled:opacity-50"
                   >
                     Cancel
                   </button>
                 </div>
-              </form>
+              </motion.form>
             ) : (
               <div className="grid md:grid-cols-3 gap-8">
-                <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-brand-blue mb-4">
-                    <Activity size={20} />
+                <div className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100 hover:border-brand-blue/20 transition-colors group">
+                  <div className="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center text-brand-blue mb-6 group-hover:scale-110 transition-transform">
+                    <Activity size={24} />
                   </div>
-                  <h4 className="font-bold text-slate-900 mb-1">Account History</h4>
-                  <p className="text-xs text-slate-400">View your login sessions and activity logs.</p>
+                  <h4 className="font-black text-slate-900 mb-2">Activity Monitor</h4>
+                  <p className="text-xs text-slate-500 leading-relaxed">Track your engagement and contributions across the Knowledge Hub platform.</p>
                 </div>
-                <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-indigo-500 mb-4">
-                    <ShieldCheck size={20} />
+                <div className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100 hover:border-brand-blue/20 transition-colors group">
+                  <div className="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center text-brand-blue mb-6 group-hover:scale-110 transition-transform">
+                    <ShieldCheck size={24} />
                   </div>
-                  <h4 className="font-bold text-slate-900 mb-1">Security</h4>
-                  <p className="text-xs text-slate-400">Manage two-factor authentication and keys.</p>
+                  <h4 className="font-black text-slate-900 mb-2">Privacy & Security</h4>
+                  <p className="text-xs text-slate-500 leading-relaxed">Manage your data permissions and security settings for your 567 Development account.</p>
                 </div>
-                <div className="p-6 bg-slate-50 rounded-3xl border border-slate-100">
-                  <div className="w-10 h-10 bg-white rounded-xl shadow-sm flex items-center justify-center text-brand-green mb-4">
-                    <BookOpen size={20} />
+                <div className="p-8 bg-slate-50 rounded-[2.5rem] border border-slate-100 hover:border-brand-blue/20 transition-colors group">
+                  <div className="w-12 h-12 bg-white rounded-2xl shadow-sm flex items-center justify-center text-brand-blue mb-6 group-hover:scale-110 transition-transform">
+                    <TrendingUp size={24} />
                   </div>
-                  <h4 className="font-bold text-slate-900 mb-1">Subscriptions</h4>
-                  <p className="text-xs text-slate-400">Manage your newsletter and research updates.</p>
+                  <h4 className="font-black text-slate-900 mb-2">Growth Tracking</h4>
+                  <p className="text-xs text-slate-500 leading-relaxed">See how your professional profile has evolved and get tailored research recommendations.</p>
                 </div>
               </div>
             )}
@@ -1070,24 +1137,53 @@ const NotificationCenter = ({
   );
 };
 
-const AdminPanelView = ({ onBack }: { onBack: () => void }) => {
+const AdminPanelView = ({ onBack, currentUser }: { onBack: () => void, currentUser: User | null }) => {
   const [users, setUsers] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'users' | 'blog'>('users');
+  
+  // Blog form state
+  const [blogForm, setBlogForm] = useState({ title: '', excerpt: '', content: '', category: 'Research', imagePath: '' });
+  const [creatingPost, setCreatingPost] = useState(false);
+  const [postStatus, setPostStatus] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
 
   useEffect(() => {
-    const loadUsers = async () => {
-      const allUsers = await fetchAllUsers();
-      setUsers(allUsers);
-      setLoading(false);
-    };
-    loadUsers();
-  }, []);
+    if (activeTab === 'users') {
+      const loadUsers = async () => {
+        setLoading(true);
+        const allUsers = await fetchAllUsers();
+        setUsers(allUsers);
+        setLoading(false);
+      };
+      loadUsers();
+    }
+  }, [activeTab]);
 
   const handleRoleChange = async (uid: string, newRole: 'admin' | 'editor' | 'viewer') => {
-    // Optimistic update
     setUsers(users.map(u => u.uid === uid ? { ...u, role: newRole, isUpdating: true } : u));
     await updateUserRole(uid, newRole);
     setUsers(users.map(u => u.uid === uid ? { ...u, role: newRole, isUpdating: false } : u));
+  };
+
+  const handleCreatePost = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!currentUser) return;
+    setCreatingPost(true);
+    setPostStatus(null);
+    try {
+      const res = await createBlogPost({
+        ...blogForm,
+        authorId: currentUser.id
+      });
+      if (res) {
+        setPostStatus({ type: 'success', msg: 'Blog post created successfully!' });
+        setBlogForm({ title: '', excerpt: '', content: '', category: 'Research', imagePath: '' });
+      }
+    } catch (err) {
+      setPostStatus({ type: 'error', msg: 'Failed to create blog post.' });
+    } finally {
+      setCreatingPost(false);
+    }
   };
 
   return (
@@ -1104,93 +1200,199 @@ const AdminPanelView = ({ onBack }: { onBack: () => void }) => {
           <ArrowLeft size={14} strokeWidth={3} /> Back to Home
         </button>
 
-        <div className="bg-white rounded-[2rem] shadow-xl overflow-hidden border border-slate-100">
-          <div className="p-8 border-b border-slate-100 flex justify-between items-center text-slate-800">
-            <div>
-              <h1 className="text-2xl font-black text-slate-900">User Role Management</h1>
-              <p className="text-sm text-slate-500 mt-1">Manage system permissions and access levels</p>
-            </div>
-            <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100 text-xs font-bold text-slate-600">
-              {loading ? <Skeleton className="w-4 h-4 rounded-full" /> : <Users size={16} />} 
-              {loading ? <Skeleton className="w-20 h-3" /> : `${users.length} Total Users`}
-            </div>
-          </div>
+        <div className="flex gap-4 mb-8">
+          <button 
+            onClick={() => setActiveTab('users')}
+            className={`px-6 py-3 rounded-2xl font-bold transition-all ${activeTab === 'users' ? 'bg-brand-blue text-white shadow-lg shadow-blue-500/20' : 'bg-white text-slate-500 border border-slate-100 hover:border-brand-blue/30'}`}
+          >
+            Users
+          </button>
+          <button 
+            onClick={() => setActiveTab('blog')}
+            className={`px-6 py-3 rounded-2xl font-bold transition-all ${activeTab === 'blog' ? 'bg-brand-blue text-white shadow-lg shadow-blue-500/20' : 'bg-white text-slate-500 border border-slate-100 hover:border-brand-blue/30'}`}
+          >
+            Blog Management
+          </button>
+        </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-left">
-              <thead>
-                <tr className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                  <th className="px-8 py-4">User</th>
-                  <th className="px-8 py-4">Email</th>
-                  <th className="px-8 py-4">Current Role</th>
-                  <th className="px-8 py-4">Actions</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-50">
-                {loading ? (
-                  [...Array(5)].map((_, i) => (
-                    <tr key={i}>
-                      <td className="px-8 py-6">
-                        <div className="flex items-center gap-3">
-                          <Skeleton className="w-8 h-8 rounded-full" />
-                          <Skeleton className="w-32 h-4" />
-                        </div>
-                      </td>
-                      <td className="px-8 py-6"><Skeleton className="w-48 h-4" /></td>
-                      <td className="px-8 py-6"><Skeleton className="w-16 h-6 rounded-full" /></td>
-                      <td className="px-8 py-6"><Skeleton className="w-40 h-8 rounded-lg" /></td>
+        <div className="bg-white rounded-[2rem] shadow-xl overflow-hidden border border-slate-100">
+          {activeTab === 'users' ? (
+            <>
+              <div className="p-8 border-b border-slate-100 flex justify-between items-center text-slate-800">
+                <div>
+                  <h1 className="text-2xl font-black text-slate-900">User Role Management</h1>
+                  <p className="text-sm text-slate-500 mt-1">Manage system permissions and access levels</p>
+                </div>
+                <div className="flex items-center gap-2 px-4 py-2 bg-slate-50 rounded-full border border-slate-100 text-xs font-bold text-slate-600">
+                  {loading ? <Skeleton className="w-4 h-4 rounded-full" /> : <Users size={16} />} 
+                  {loading ? <Skeleton className="w-20 h-3" /> : `${users.length} Total Users`}
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-left">
+                  <thead>
+                    <tr className="bg-slate-50/50 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                      <th className="px-8 py-4">User</th>
+                      <th className="px-8 py-4">Email</th>
+                      <th className="px-8 py-4">Current Role</th>
+                      <th className="px-8 py-4">Actions</th>
                     </tr>
-                  ))
-                ) : users.map(userDoc => (
-                  <tr key={userDoc.uid} className="hover:bg-slate-50/30 transition-colors">
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-3">
-                        {userDoc.photoURL ? (
-                          <img src={userDoc.photoURL} alt="" className="w-8 h-8 rounded-full" />
-                        ) : (
-                          <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
-                            <Users size={16} />
+                  </thead>
+                  <tbody className="divide-y divide-slate-50">
+                    {loading ? (
+                      [...Array(5)].map((_, i) => (
+                        <tr key={i}>
+                          <td className="px-8 py-6">
+                            <div className="flex items-center gap-3">
+                              <Skeleton className="w-8 h-8 rounded-full" />
+                              <Skeleton className="w-32 h-4" />
+                            </div>
+                          </td>
+                          <td className="px-8 py-6"><Skeleton className="w-48 h-4" /></td>
+                          <td className="px-8 py-6"><Skeleton className="w-16 h-6 rounded-full" /></td>
+                          <td className="px-8 py-6"><Skeleton className="w-40 h-8 rounded-lg" /></td>
+                        </tr>
+                      ))
+                    ) : users.map(userDoc => (
+                      <tr key={userDoc.uid} className="hover:bg-slate-50/30 transition-colors">
+                        <td className="px-8 py-6">
+                          <div className="flex items-center gap-3">
+                            {userDoc.photoURL ? (
+                              <img src={userDoc.photoURL} alt="" className="w-8 h-8 rounded-full" />
+                            ) : (
+                              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-slate-400">
+                                <Users size={16} />
+                              </div>
+                            )}
+                            <span className="font-bold text-slate-800">{userDoc.displayName || 'Anonymous'}</span>
                           </div>
-                        )}
-                        <span className="font-bold text-slate-800">{userDoc.displayName || 'Anonymous'}</span>
-                      </div>
-                    </td>
-                    <td className="px-8 py-6 text-sm text-slate-500">{userDoc.email}</td>
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-2">
-                        <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${
-                          userDoc.role === 'admin' ? 'bg-red-50 text-red-600' :
-                          userDoc.role === 'editor' ? 'bg-blue-50 text-blue-600' :
-                          'bg-slate-100 text-slate-500'
-                        }`}>
-                          {userDoc.role}
-                        </span>
-                        {userDoc.isUpdating && <LoadingSpinner size={12} />}
-                      </div>
-                    </td>
-                    <td className="px-8 py-6">
-                      <div className="flex items-center gap-2">
-                        {(['viewer', 'editor', 'admin'] as const).map(role => (
-                          <button
-                            key={role}
-                            disabled={userDoc.role === role || userDoc.isUpdating}
-                            onClick={() => handleRoleChange(userDoc.uid, role)}
-                            className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${
-                              userDoc.role === role 
-                                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
-                                : 'bg-white border border-slate-200 text-slate-600 hover:border-brand-blue hover:text-brand-blue'
-                            }`}
-                          >
-                            Set {role}
-                          </button>
-                        ))}
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                        </td>
+                        <td className="px-8 py-6 text-sm text-slate-500">{userDoc.email}</td>
+                        <td className="px-8 py-6">
+                          <div className="flex items-center gap-2">
+                            <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-tighter ${
+                              userDoc.role === 'admin' ? 'bg-red-50 text-red-600' :
+                              userDoc.role === 'editor' ? 'bg-blue-50 text-blue-600' :
+                              'bg-slate-100 text-slate-500'
+                            }`}>
+                              {userDoc.role}
+                            </span>
+                            {userDoc.isUpdating && <LoadingSpinner size={12} />}
+                          </div>
+                        </td>
+                        <td className="px-8 py-6">
+                          <div className="flex items-center gap-2">
+                            {(['viewer', 'editor', 'admin'] as const).map(role => (
+                              <button
+                                key={role}
+                                disabled={userDoc.role === role || userDoc.isUpdating}
+                                onClick={() => handleRoleChange(userDoc.uid, role)}
+                                className={`px-3 py-1 rounded-lg text-[10px] font-bold transition-all ${
+                                  userDoc.role === role 
+                                    ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                    : 'bg-white border border-slate-200 text-slate-600 hover:border-brand-blue hover:text-brand-blue'
+                                }`}
+                              >
+                                Set {role}
+                              </button>
+                            ))}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          ) : (
+            <div className="p-12">
+              <div className="mb-12">
+                <h2 className="text-2xl font-black text-slate-900">Create New Blog Post</h2>
+                <p className="text-slate-500 mt-2 font-medium">Add a new article or research piece to the Knowledge Hub</p>
+              </div>
+
+              <form onSubmit={handleCreatePost} className="max-w-3xl space-y-8">
+                <div className="grid md:grid-cols-2 gap-8">
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Title</label>
+                    <input 
+                      required
+                      value={blogForm.title}
+                      onChange={e => setBlogForm({ ...blogForm, title: e.target.value })}
+                      placeholder="Enter post title"
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3.5 text-sm focus:bg-white outline-none ring-brand-blue/20 transition-all"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Category</label>
+                    <select 
+                      value={blogForm.category}
+                      onChange={e => setBlogForm({ ...blogForm, category: e.target.value })}
+                      className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3.5 text-sm focus:bg-white outline-none ring-brand-blue/20 transition-all font-bold text-slate-600"
+                    >
+                      {['Research', 'Market News', 'Institutional Audit', 'Policy', 'Industrial'].map(cat => (
+                        <option key={cat} value={cat}>{cat}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Image URL</label>
+                  <input 
+                    value={blogForm.imagePath}
+                    onChange={e => setBlogForm({ ...blogForm, imagePath: e.target.value })}
+                    placeholder="https://images.unsplash.com/photo-..."
+                    className="w-full bg-slate-50 border border-slate-100 rounded-xl px-4 py-3.5 text-sm focus:bg-white outline-none ring-brand-blue/20 transition-all"
+                  />
+                  <p className="text-[10px] text-slate-400 font-medium">Leave empty for default image</p>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Excerpt</label>
+                  <textarea 
+                    required
+                    value={blogForm.excerpt}
+                    onChange={e => setBlogForm({ ...blogForm, excerpt: e.target.value })}
+                    placeholder="Short summary for the preview card..."
+                    className="w-full h-24 bg-slate-50 border border-slate-100 rounded-xl px-4 py-3.5 text-sm focus:bg-white outline-none ring-brand-blue/20 transition-all resize-none"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Full Content</label>
+                  <textarea 
+                    required
+                    value={blogForm.content}
+                    onChange={e => setBlogForm({ ...blogForm, content: e.target.value })}
+                    placeholder="Article body content..."
+                    className="w-full h-64 bg-slate-50 border border-slate-100 rounded-xl px-4 py-3.5 text-sm focus:bg-white outline-none ring-brand-blue/20 transition-all resize-none"
+                  />
+                </div>
+
+                <div className="flex items-center gap-4 pt-4">
+                  <button 
+                    disabled={creatingPost}
+                    type="submit"
+                    className="px-10 py-4 bg-brand-blue text-white font-black rounded-xl shadow-xl shadow-blue-500/20 hover:scale-[1.02] active:scale-95 disabled:opacity-50 transition-all flex items-center justify-center gap-3"
+                  >
+                    {creatingPost ? <LoadingSpinner size={20} className="text-white" /> : 'Publish Article'}
+                  </button>
+                  
+                  {postStatus && (
+                    <motion.div 
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      className={`text-sm font-bold ${postStatus.type === 'success' ? 'text-green-500' : 'text-red-500'}`}
+                    >
+                      {postStatus.msg}
+                    </motion.div>
+                  )}
+                </div>
+              </form>
+            </div>
+          )}
         </div>
       </div>
     </motion.div>
@@ -1477,6 +1679,7 @@ export default function App() {
 
   const [contacting, setContacting] = useState(false);
   const [contactStatus, setContactStatus] = useState<{ type: 'success' | 'error', msg: string } | null>(null);
+  const [selectedBlogCategory, setSelectedBlogCategory] = useState<string>('All');
 
   const [creatingPost, setCreatingPost] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
@@ -1514,11 +1717,6 @@ export default function App() {
 
   const handleSelectPublication = (item?: string) => {
     trackEvent('publication_selected', { category: item || 'all' });
-    if (!user) {
-      setAuthMode('login');
-      setShowAuthModal(true);
-      return;
-    }
     setCurrentView({ type: 'publication', slug: item?.toLowerCase() });
     setIsMenuOpen(false);
     window.scrollTo(0, 0);
@@ -1537,11 +1735,6 @@ export default function App() {
   };
 
   const handleViewAbout = (section?: string) => {
-    if (!user) {
-      setAuthMode('login');
-      setShowAuthModal(true);
-      return;
-    }
     setCurrentView({ type: 'about', section });
     setIsMenuOpen(false);
     window.scrollTo(0, 0);
@@ -1620,15 +1813,22 @@ export default function App() {
     const fetchData = async (country: string = 'ETH') => {
       setLoading(true);
       try {
-        const [blogRes, statsRes, gdpRes] = await Promise.all([
-          fetch('/api/blog'),
+        const [blogData, statsRes, gdpRes] = await Promise.all([
+          fetchBlogPosts(10), // Use Firestore
           fetch('/api/stats'),
           fetch(`/api/indicator/gdp?country=${country}`)
         ]);
-        const blogData = await blogRes.json();
+        
+        let finalBlogData = blogData;
+        // Fallback or seed if Firestore is empty (optional, but good for demo)
+        if (blogData.length === 0) {
+          const res = await fetch('/api/blog');
+          finalBlogData = await res.json();
+        }
+
         const statsData = await statsRes.json();
         const gdpData = await gdpRes.json();
-        setBlogPosts(blogData);
+        setBlogPosts(finalBlogData as BlogPost[]);
         setStats(statsData);
         setGdpIndicator(gdpData);
       } catch (error) {
@@ -1840,13 +2040,15 @@ export default function App() {
   return (
     <div className="min-h-screen flex flex-col font-sans">
       {/* --- HEADER --- */}
-      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <header className="sticky top-0 z-50 bg-white/80 backdrop-blur-md border-b border-slate-100">
+        <div className="w-full px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center h-20">
             {/* Logo */}
-            <BrandLogo text="Development for all" onClick={handleBackHome} />
+            <div className="flex-shrink-0">
+              <BrandLogo text="Development for all" onClick={handleBackHome} />
+            </div>
 
-            <div className="flex items-center gap-2 sm:gap-4 md:mr-auto ml-2 sm:ml-6">
+            <div className="flex items-center gap-2 sm:gap-4 ml-auto mr-6 lg:mr-12">
               <SearchBar />
               <button 
                 onClick={toggleDark}
@@ -1871,8 +2073,8 @@ export default function App() {
               />
               <button 
                 onClick={() => {
-                  if (!user) { setShowAuthModal(true); setAuthMode('login'); }
-                  else { handleBackHome(); setTimeout(() => { window.location.hash = "#blog"; }, 100); }
+                  handleBackHome();
+                  setTimeout(() => { window.location.hash = "#blog"; }, 100);
                 }} 
                 className="nav-link border-none bg-transparent"
               >
@@ -1897,8 +2099,8 @@ export default function App() {
               )}
               <button 
                 onClick={() => {
-                  if (!user) { setShowAuthModal(true); setAuthMode('login'); }
-                  else { handleBackHome(); setTimeout(() => { window.location.hash = "#dashboard"; }, 100); }
+                  handleBackHome();
+                  setTimeout(() => { window.location.hash = "#dashboard"; }, 100);
                 }} 
                 className="nav-link border-none bg-transparent"
               >
@@ -1907,8 +2109,8 @@ export default function App() {
 
               <button 
                 onClick={() => {
-                  if (!user) { setShowAuthModal(true); setAuthMode('login'); }
-                  else { handleBackHome(); setTimeout(() => { window.location.hash = "#contact"; }, 100); }
+                  handleBackHome();
+                  setTimeout(() => { window.location.hash = "#contact"; }, 100);
                 }} 
                 className="nav-link border-none bg-transparent"
               >
@@ -2048,8 +2250,9 @@ export default function App() {
                 />
                 <button 
                   onClick={() => {
-                    if (!user) { setIsMenuOpen(false); setShowAuthModal(true); setAuthMode('login'); }
-                    else { handleBackHome(); setTimeout(() => { window.location.hash = "#blog"; }, 100); }
+                    handleBackHome();
+                    setTimeout(() => { window.location.hash = "#blog"; }, 100);
+                    setIsMenuOpen(false);
                   }} 
                   className="w-full text-left py-3 text-slate-800 font-medium border-b border-slate-100 bg-transparent"
                 >
@@ -2074,8 +2277,9 @@ export default function App() {
                 )}
                 <button 
                   onClick={() => {
-                    if (!user) { setIsMenuOpen(false); setShowAuthModal(true); setAuthMode('login'); }
-                    else { handleBackHome(); setTimeout(() => { window.location.hash = "#dashboard"; }, 100); }
+                    handleBackHome();
+                    setTimeout(() => { window.location.hash = "#dashboard"; }, 100);
+                    setIsMenuOpen(false);
                   }} 
                   className="w-full text-left py-3 text-slate-800 font-medium border-b border-slate-100 bg-transparent"
                 >
@@ -2084,8 +2288,9 @@ export default function App() {
 
                 <button 
                   onClick={() => {
-                    if (!user) { setIsMenuOpen(false); setShowAuthModal(true); setAuthMode('login'); }
-                    else { handleBackHome(); setTimeout(() => { window.location.hash = "#contact"; }, 100); }
+                    handleBackHome();
+                    setTimeout(() => { window.location.hash = "#contact"; }, 100);
+                    setIsMenuOpen(false);
                   }} 
                   className="w-full text-left py-3 text-slate-800 font-medium border-b border-slate-100 bg-transparent"
                 >
@@ -2874,16 +3079,32 @@ export default function App() {
               <h2 className="text-brand-blue font-bold text-sm mb-4 uppercase tracking-widest">Knowledge Hub</h2>
               <h3 className="text-4xl font-bold text-slate-900 mb-2">Latest Research & News</h3>
               <p className="text-slate-500">Read the newest insights from our experts on the ground.</p>
+              
+              <div className="flex flex-wrap gap-4 mt-8">
+                {['All', 'Research', 'Market News', 'Institutional Audit', 'Policy', 'Industrial'].map((cat) => (
+                  <button
+                    key={cat}
+                    onClick={() => setSelectedBlogCategory(cat)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                      selectedBlogCategory === cat
+                        ? 'bg-brand-blue text-white shadow-lg shadow-blue-500/20'
+                        : 'bg-white text-slate-500 hover:border-brand-blue/30 border border-slate-100'
+                    }`}
+                  >
+                    {cat}
+                  </button>
+                ))}
+              </div>
             </div>
             <button className="flex items-center gap-2 text-brand-blue font-bold border-b-2 border-brand-blue pb-1 hover:text-brand-blue/70 hover:border-brand-blue/70 transition-all">
               View All Posts <ArrowRight size={18} />
             </button>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-8">
-                        {loading ? (
-              [...Array(3)].map((_, i) => (
-                <div key={i} className="bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100">
+          <div className="columns-1 md:columns-2 lg:columns-3 gap-8">
+            {loading ? (
+              [...Array(6)].map((_, i) => (
+                <div key={i} className="break-inside-avoid mb-8 bg-white rounded-3xl overflow-hidden shadow-sm border border-slate-100">
                   <Skeleton className="h-60 w-full" />
                   <div className="p-8">
                     <Skeleton className="h-6 w-3/4 mb-4 rounded-lg" />
@@ -2898,9 +3119,12 @@ export default function App() {
                   </div>
                 </div>
               ))
-            ) : blogPosts.slice(0, 3).map((post, i) => (
-              <BlogPostCard key={post.id} post={post} index={i} />
-            ))}
+            ) : blogPosts
+                .filter(post => selectedBlogCategory === 'All' || post.category === selectedBlogCategory)
+                .slice(0, 9)
+                .map((post, i) => (
+                  <BlogPostCard key={post.id} post={post} index={i} />
+                ))}
           </div>
         </div>
       </motion.section>
@@ -2908,7 +3132,7 @@ export default function App() {
           ) : currentView.type === 'publication' ? (
             <PublicationView onBack={handleBackHome} />
           ) : currentView.type === 'admin' ? (
-            <AdminPanelView onBack={handleBackHome} />
+            <AdminPanelView onBack={handleBackHome} currentUser={user} />
           ) : currentView.type === 'profile' ? (
             user && <ProfileView user={user} onUpdate={(data) => setUser({ ...user, ...data })} onBack={handleBackHome} />
           ) : currentView.type === 'dev' ? (
@@ -2967,8 +3191,8 @@ export default function App() {
       </motion.section>
 
       {/* --- FOOTER --- */}
-      <footer className="bg-slate-900 text-slate-300 pt-24 pb-12">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+      <footer className="bg-slate-900 text-slate-300 pt-24 pb-12 overflow-hidden">
+        <div className="w-full px-4 sm:px-6 lg:px-12">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-16 mb-20">
             {/* Brand */}
             <div>

@@ -54,6 +54,7 @@
         "title": { "type": "string" },
         "excerpt": { "type": "string" },
         "content": { "type": "string" },
+        "category": { "type": "string" },
         "imagePath": { "type": "string" },
         "authorId": { "type": "string" },
         "createdAt": { "type": "string", "format": "date-time" }
